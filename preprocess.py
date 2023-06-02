@@ -4,7 +4,7 @@ import numpy as np
 
 def roll_from_csv(filename):
     df = pd.read_csv(filename)
-    df.drop("timestamp", axis=1)
+    df = df.drop("timestamp", axis=1)
 
     arr = np.array([window.to_numpy() for window in df.rolling(20, min_periods=20)][19:])
 
@@ -16,7 +16,8 @@ def filter_mad(arr):
     median = np.median(vol)
     mad = np.median(np.abs(vol - median))
 
-    poi = vol > mad + median
+    poi = vol > 3*mad + median
+    print("left after filtering:", np.sum(poi) / vol.shape[0])
 
     return arr[poi, :, :]
 
@@ -47,19 +48,23 @@ def export_dataset(no_taps, soft_taps, hard_taps):
     np.save("data/output.npy", y)
 
 
-if __name__ == "__main__":
+def main():
     ht = roll_from_csv("data/hardtap.csv")
     tot_frames = ht.shape[0]
     ht = filter_mad(ht)
     intresting_frames = ht.shape[0]
-    print("hard tap TPS:", tot_frames / intresting_frames)
+    print("hard tap TPS:", intresting_frames / tot_frames )
 
     st = roll_from_csv("data/softtap.csv")
     tot_frames = st.shape[0]
     st = filter_mad(st)
     intresting_frames = st.shape[0]
-    print("soft tap TPS:", tot_frames / intresting_frames)
+    print("soft tap TPS:", intresting_frames / tot_frames )
 
     nt = roll_from_csv("data/notap.csv")
 
     export_dataset(nt, st, ht)
+
+
+if __name__ == "__main__":
+    main()

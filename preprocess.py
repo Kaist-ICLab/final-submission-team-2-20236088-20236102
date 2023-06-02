@@ -45,7 +45,8 @@ def export_dataset(no_taps, soft_taps, hard_taps, balance=True):
 
     assert(x.shape[0] == y.shape[0])
 
-    shuffle = np.random.shuffle(np.arange(x.shape[0]))
+    shuffle = np.arange(x.shape[0])
+    np.random.shuffle(shuffle)
     x = x[shuffle]
     y = y[shuffle]
 

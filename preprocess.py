@@ -22,14 +22,19 @@ def filter_mad(arr):
     return arr[poi, :, :]
 
 
-def export_dataset(no_taps, soft_taps, hard_taps):
+def export_dataset(no_taps, soft_taps, hard_taps, balance=True):
+    if balance:
+        no_no_taps = max(soft_taps.shape[0], hard_taps.shape[0])
+    else:
+        no_no_taps = no_taps.shape[0]
+
     x = np.concatenate((
-        no_taps.reshape((no_taps.shape[0], -1)),
+        no_taps.reshape((no_taps.shape[0], -1))[:no_no_taps],
         soft_taps.reshape((soft_taps.shape[0], -1)),
         hard_taps.reshape((hard_taps.shape[0], -1))
     ))
     y = np.concatenate((
-        np.repeat(0, no_taps.shape[0]),
+        np.repeat(0, no_taps.shape[0])[:no_no_taps],
         np.repeat(1, soft_taps.shape[0]),
         np.repeat(2, hard_taps.shape[0])
     ))

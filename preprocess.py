@@ -24,14 +24,14 @@ def filter_mad(arr):
 if __name__ == "__main__":
     ht = roll_from_csv("data/hardtap.csv")
     tot_frames = ht.shape[0]
-    ht = filter_3mad(ht)
+    ht = filter_mad(ht)
     intresting_frames = ht.shape[0]
     print("TPS:", tot_frames / intresting_frames)
 
     st = roll_from_csv("data/softtap.csv")
-    tot_frames = ht.shape[0]
-    ht = filter_3mad(ht)
-    intresting_frames = ht.shape[0]
+    tot_frames = st.shape[0]
+    st = filter_mad(st)
+    intresting_frames = st.shape[0]
     print("TPS:", tot_frames / intresting_frames)
 
     nt = roll_from_csv("data/notap.csv")

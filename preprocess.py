@@ -4,7 +4,8 @@ import numpy as np
 
 def roll_from_csv(filename):
     df = pd.read_csv(filename)
-    df = df.drop("timestamp", axis=1)
+    #df = df.drop("timestamp", axis=1)
+    df = df.drop(["timestamp", "gyrX", "gyrY", "gyrZ"], axis=1)
 
     arr = np.array([window.to_numpy() for window in df.rolling(20, min_periods=20)][19:])
 

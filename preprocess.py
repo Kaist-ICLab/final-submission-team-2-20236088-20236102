@@ -23,22 +23,21 @@ def filter_mad(arr):
 
 
 def export_dataset(no_taps, soft_taps, hard_taps, balance=True):
+    yes_taps = np.concatenate((soft_taps, hard_taps))
     if balance:
-        no_no_taps = min(no_taps.shape[0], soft_taps.shape[0], hard_taps.shape[0])
+        no_no_taps = min(no_taps.shape[0], yes_taps.shape[0])
     else:
         no_no_taps = -1
 
     x = np.concatenate((
         no_taps.reshape((no_taps.shape[0], -1))[:no_no_taps],
-        soft_taps.reshape((soft_taps.shape[0], -1))[:no_no_taps],
-        hard_taps.reshape((hard_taps.shape[0], -1))[:no_no_taps]
+        yes_taps.reshape((yes_taps.shape[0], -1))[:no_no_taps]
     ))
     y = np.concatenate((
         np.repeat(0, no_taps.shape[0])[:no_no_taps],
-        np.repeat(1, soft_taps.shape[0])[:no_no_taps],
-        np.repeat(2, hard_taps.shape[0])[:no_no_taps]
+        np.repeat(1, yes_taps.shape[0])[:no_no_taps]
     ))
-    y = np.eye(3)[y]
+    y = np.eye(2)[y]
 
     print("X shape", x.shape)
     print("Y shape", y.shape)
@@ -69,7 +68,7 @@ def main():
 
     nt = roll_from_csv("data/notap.csv")
 
-    export_dataset(nt, np.concatenate((st, st2), axis=0), np.concatenate((st, st2), axis=0))
+    export_dataset(nt, np.concatenate((st, st2)), np.concatenate((st, st2)))
 
 
 if __name__ == "__main__":

@@ -4,8 +4,7 @@ import numpy as np
 
 def roll_from_csv(filename):
     df = pd.read_csv(filename)
-    #df = df.drop("timestamp", axis=1)
-    df = df.drop(["timestamp", "gyrX", "gyrY", "gyrZ"], axis=1)
+    df = df[["accZ"]]
 
     arr = np.array([window.to_numpy() for window in df.rolling(20, min_periods=20)][19:])
 
@@ -25,19 +24,19 @@ def filter_mad(arr):
 
 def export_dataset(no_taps, soft_taps, hard_taps, balance=True):
     if balance:
-        no_no_taps = max(soft_taps.shape[0], hard_taps.shape[0])
+        no_no_taps = min(no_taps.shape[0], soft_taps.shape[0], hard_taps.shape[0])
     else:
-        no_no_taps = no_taps.shape[0]
+        no_no_taps = -1
 
     x = np.concatenate((
         no_taps.reshape((no_taps.shape[0], -1))[:no_no_taps],
-        soft_taps.reshape((soft_taps.shape[0], -1)),
-        hard_taps.reshape((hard_taps.shape[0], -1))
+        soft_taps.reshape((soft_taps.shape[0], -1))[:no_no_taps],
+        hard_taps.reshape((hard_taps.shape[0], -1))[:no_no_taps]
     ))
     y = np.concatenate((
         np.repeat(0, no_taps.shape[0])[:no_no_taps],
-        np.repeat(1, soft_taps.shape[0]),
-        np.repeat(2, hard_taps.shape[0])
+        np.repeat(1, soft_taps.shape[0])[:no_no_taps],
+        np.repeat(2, hard_taps.shape[0])[:no_no_taps]
     ))
     y = np.eye(3)[y]
 
@@ -57,20 +56,20 @@ def export_dataset(no_taps, soft_taps, hard_taps, balance=True):
 
 def main():
     ht = roll_from_csv("data/hardtap.csv")
-    tot_frames = ht.shape[0]
     ht = filter_mad(ht)
-    intresting_frames = ht.shape[0]
-    print("hard tap TPS:", intresting_frames / tot_frames )
+
+    ht2 = roll_from_csv("data/hardtap2.csv")
+    ht2 = filter_mad(ht2)
 
     st = roll_from_csv("data/softtap.csv")
-    tot_frames = st.shape[0]
     st = filter_mad(st)
-    intresting_frames = st.shape[0]
-    print("soft tap TPS:", intresting_frames / tot_frames )
+
+    st2 = roll_from_csv("data/softtap2.csv")
+    st2 = filter_mad(st2)
 
     nt = roll_from_csv("data/notap.csv")
 
-    export_dataset(nt, st, ht)
+    export_dataset(nt, np.concatenate((st, st2), axis=0), np.concatenate((st, st2), axis=0))
 
 
 if __name__ == "__main__":

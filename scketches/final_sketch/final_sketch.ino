@@ -37,6 +37,11 @@ TfLiteTensor* output = nullptr;
 int inference_count = 0;
 int offset = 0;
 
+unsigned int timestamp = 0;
+unsigned char last_state = 0;
+unsigned int buffer[6] = {0, 0, 0, 0, 0, 0};
+unsigned int buffer_offset = 0;
+
 constexpr int kTensorArenaSize = 4000; //2000
 uint8_t tensor_arena[kTensorArenaSize];
 
@@ -45,7 +50,8 @@ float mean_[20] = {1.0022442170817063, 0.9969739768681839, 0.978042704626188, 0.
 
 float scale_[20] = {0.05701648761363816, 0.04319244611142525, 0.046883705124575015, 0.042844716062582694, 0.039743557294275894, 0.038103191961104434, 0.03919704542517741, 0.038188382004254784, 0.03629396192285551, 0.039044248721854705, 0.04310507194035964, 0.03947357881955402, 0.03882232144002704, 0.04378275001672554, 0.049458627264599125, 0.04295937918789043, 0.042593299062307084, 0.051431795092334316, 0.06028583272898376, 0.05562282799706009};
 
-
+int RESET_TIME_LIMIT = 4000;
+int SHORT_TIME_LIMIT = 1000;
 }  // namespace
 
 
@@ -101,10 +107,6 @@ void setup() {
   // Keep track of how many inferences we have performed.
   inference_count = 0;
   offset = 0;
-
-
-
-  Serial.print(input->dims->size);
 }
 
 // The name of this function is important for Arduino compatibility.
@@ -121,7 +123,7 @@ void loop() {
 
       float scaled_z = (z- mean_[offset]) / scale_[offset];
 
-      input->data.f[ offset] = scaled_z;
+      input->data.f[offset] = scaled_z;
 
       offset++;
 
@@ -144,24 +146,85 @@ void loop() {
       float no = output->data.f[0];
       float tap = output->data.f[1];
 
-      if(tap > no) {
-        Serial.println("TAP");
-        Serial.println();
+      handle_prediction(no, tap);
+    }
+}
+
+bool is_valid(int i, int first_is_short){
+  if (i > 1){
+    int prev_is_short = buffer[buffer_offset-1] - buffer[buffer_offset-2] < SHORT_TIME_LIMIT;
+    int current_is_short = buffer[buffer_offset] - buffer[buffer_offset-1] < SHORT_TIME_LIMIT;
+    if(first_is_short && !prev_is_short && current_is_short){
+      return false;
+    }
+    else if(!first_is_short && prev_is_short && !current_is_short){
+      return false;
+    }
+    else{
+      return true;
+    }
+  }
+}
+
+void handle_prediction(float no_tap, float yes_tap) {
+  unsigned char state = (yes_tap > no_tap);
+
+  if (millis() - timestamp > RESET_TIME_LIMIT) {
+    if (buffer_offset > 0) {
+      Serial.println("Reset");
+    }
+    buffer_offset = 0;
+  }
+  
+  if (state != last_state && state) {
+    buffer[buffer_offset] = millis();
+    buffer_offset++;
+
+    Serial.print("-> ");
+    for (int i = 1; i < buffer_offset; i++) {
+      if(buffer[i] - buffer[i-1] < SHORT_TIME_LIMIT) {
+        Serial.print(".");
+      } else {
+        Serial.print("_");
+      }
+    }
+    Serial.println("");
+
+
+    bool valid_number = true;
+
+    if (buffer_offset >= 6) {
+      // Do match
+      int no_short = 0;
+      int first_is_short = buffer[1] - buffer[0] < SHORT_TIME_LIMIT;
+
+      for (int i = 0; i < 5; i++) {
+        no_short += buffer[i+1] - buffer[i] < SHORT_TIME_LIMIT;
+        valid_number = is_valid(i, first_is_short);
       }
 
-      /*
-      Serial.print(no);
-      Serial.print(',');
-      Serial.print(soft);
-      Serial.print(',');
-      Serial.println(hard);
-      */
       
       
-      // Output the results. A custom HandleOutput function can be implemented
-      // for each supported hardware target.
-      //HandleOutput(error_reporter, x, y);
+      if(!valid_number){
+         Serial.println("Invalid Number");
+      }
+      else if (first_is_short) {
+        Serial.println(no_short);
+      } 
+      else {
+        if (no_short > 0) {
+          Serial.println(10-no_short);
+        } else{
+          Serial.println(0);
+        }
 
+      }
 
+      // Reset
+      buffer_offset = 0;
     }
+    timestamp = millis();
+  }
+
+  last_state = state;
 }

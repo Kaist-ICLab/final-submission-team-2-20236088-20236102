@@ -151,9 +151,11 @@ void loop() {
 }
 
 bool is_valid(int i, int first_is_short){
+  //TODO
+  //return true;
   if (i > 1){
-    int prev_is_short = buffer[buffer_offset-1] - buffer[buffer_offset-2] < SHORT_TIME_LIMIT;
-    int current_is_short = buffer[buffer_offset] - buffer[buffer_offset-1] < SHORT_TIME_LIMIT;
+    int prev_is_short = buffer[i-1] - buffer[i-2] < SHORT_TIME_LIMIT;
+    int current_is_short = buffer[i] - buffer[i-1] < SHORT_TIME_LIMIT;
     if(first_is_short && !prev_is_short && current_is_short){
       return false;
     }
@@ -198,8 +200,10 @@ void handle_prediction(float no_tap, float yes_tap) {
       int no_short = 0;
       int first_is_short = buffer[1] - buffer[0] < SHORT_TIME_LIMIT;
 
-      for (int i = 0; i < 5; i++) {
-        no_short += buffer[i+1] - buffer[i] < SHORT_TIME_LIMIT;
+      for (int i = 0; i < 6; i++) {
+        if(i<5){
+          no_short += buffer[i+1] - buffer[i] < SHORT_TIME_LIMIT;
+        }
         valid_number = is_valid(i, first_is_short);
       }
 

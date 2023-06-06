@@ -37,13 +37,32 @@ TfLiteTensor* output = nullptr;
 int inference_count = 0;
 int offset = 0;
 
-constexpr int kTensorArenaSize = 4000; //2000
+// Track wich state of knocking we just where in
+unsigned char last_state = 0;
+// the timestamp for the last state change
+unsigned int timestamp = 0;
+// Morse code buffer
+unsigned int buffer[6] = {0, 0, 0, 0, 0, 0};
+// Current index of the "write head" in the buffer
+unsigned int buffer_offset = 0;
+
+constexpr int kTensorArenaSize = 4000;
 uint8_t tensor_arena[kTensorArenaSize];
 
+
+float mean_[20] = {1.0022442170817063, 0.9969739768681839, 0.978042704626188, 0.9774699733094633, 0.9885242437721001, 0.9912844750888297, 0.9855393683272535, 0.9825700622774335, 0.9850900800710289, 0.98709630782904, 0.9885487099642646, 0.9860542704624838, 0.9812700177934515, 0.9842415480425646, 0.9943527580069735, 0.9891570284696032, 0.9749644128112537, 0.9777680160141133, 1.0058463078290607, 1.0034842081849298};
+
+float scale_[20] = {0.05701648761363816, 0.04319244611142525, 0.046883705124575015, 0.042844716062582694, 0.039743557294275894, 0.038103191961104434, 0.03919704542517741, 0.038188382004254784, 0.03629396192285551, 0.039044248721854705, 0.04310507194035964, 0.03947357881955402, 0.03882232144002704, 0.04378275001672554, 0.049458627264599125, 0.04295937918789043, 0.042593299062307084, 0.051431795092334316, 0.06028583272898376, 0.05562282799706009};
+
+// Time to wait before reseting the morse code buffer
+int RESET_TIME_LIMIT = 4000;
+// Timelimit for a short tap
+int SHORT_TIME_LIMIT = 1000;
 }  // namespace
 
 
-// The name of this function is important for Arduino compatibility.
+
+
 void setup() {
     Serial.begin(9600);
   while (!Serial);
@@ -92,38 +111,20 @@ void setup() {
 
   // Keep track of how many inferences we have performed.
   inference_count = 0;
+  offset = 0;
 }
 
-// The name of this function is important for Arduino compatibility.
 void loop() {
-  // Calculate an x value to feed into the model. We compare the current
-  // inference_count to the number of inferences per cycle to determine
-  // our position within the range of possible x values the model was
-  // trained on, and use this to calculate a value.
   float x, y, z;
   
   if (IMU.accelerationAvailable() && IMU.gyroscopeAvailable()) {
+	  // Capture sensor data to be feed to the model
       IMU.readAcceleration(x, y, z);
 
-      int8_t x_quantized = x / input->params.scale + input->params.zero_point;
-      int8_t y_quantized = y / input->params.scale + input->params.zero_point;
-      int8_t z_quantized = z / input->params.scale + input->params.zero_point;
 
-      input->data.int8[0 + offset*6] = x_quantized;
-      input->data.int8[1 + offset*6] = y_quantized;
-      input->data.int8[2 + offset*6] = z_quantized;
+      float scaled_z = (z- mean_[offset]) / scale_[offset];
 
-
-      //gyroscope data
-      IMU.readGyroscope(x, y, z);
-
-      x_quantized = x / input->params.scale + input->params.zero_point;
-      y_quantized = y / input->params.scale + input->params.zero_point;
-      z_quantized = z / input->params.scale + input->params.zero_point;
-
-      input->data.int8[3 + offset*6] = x_quantized;
-      input->data.int8[4 + offset*6] = y_quantized;
-      input->data.int8[5 + offset*6] = z_quantized;
+      input->data.f[offset] = scaled_z;
 
       offset++;
 
@@ -143,32 +144,92 @@ void loop() {
       }
 
       // Obtain the quantized output from model's output tensor
-      int8_t no_quantized = output->data.int8[0];
-      int8_t soft_quantized = output->data.int8[1];
-      int8_t hard_quantized = output->data.int8[2];
+      float no = output->data.f[0];
+      float tap = output->data.f[1];
 
-      // Dequantize the output from integer to floating-point
-      float no = (no_quantized - output->params.zero_point) * output->params.scale;
-      float soft = (soft_quantized - output->params.zero_point) * output->params.scale;
-      float hard = (hard_quantized - output->params.zero_point) * output->params.scale;
-
-      Serial.print(no);
-      Serial.print(',');
-      Serial.print(soft);
-      Serial.print(',');
-      Serial.println(hard);
-
-
-      /*
-      // Output the results. A custom HandleOutput function can be implemented
-      // for each supported hardware target.
-      HandleOutput(error_reporter, x, y);
-
-      // Increment the inference_counter, and reset it if we have reached
-      // the total number per cycle
-      inference_count += 1;
-      if (inference_count >= kInferencesPerCycle) inference_count = 0;
-      */
-
+      handle_prediction(no, tap);
     }
+}
+
+bool is_valid(int i, int first_is_short){
+  if (i > 1){
+    int prev_is_short = buffer[i-1] - buffer[i-2] < SHORT_TIME_LIMIT;
+    int current_is_short = buffer[i] - buffer[i-1] < SHORT_TIME_LIMIT;
+    if(first_is_short && !prev_is_short && current_is_short){
+      return false;
+    }
+    else if(!first_is_short && prev_is_short && !current_is_short){
+      return false;
+    }
+    else{
+      return true;
+    }
+  }
+}
+
+void handle_prediction(float no_tap, float yes_tap) {
+  unsigned char state = (yes_tap > no_tap);
+
+  // Reset the morse code buffer if we recive no input for a long time
+  if (millis() - timestamp > RESET_TIME_LIMIT) {
+    if (buffer_offset > 0) {
+      Serial.println("Reset");
+    }
+    buffer_offset = 0;
+  }
+  
+  // We are only intreseted in state transition to a knocking/tapping state
+  if (state != last_state && state) {
+    buffer[buffer_offset] = millis();
+    buffer_offset++;
+
+    Serial.print("-> ");
+    for (int i = 1; i < buffer_offset; i++) {
+      if(buffer[i] - buffer[i-1] < SHORT_TIME_LIMIT) {
+        Serial.print(".");
+      } else {
+        Serial.print("-");
+      }
+    }
+    Serial.println("");
+
+
+    bool valid_number = true;
+
+    if (buffer_offset >= 6) {
+      // Do match
+      int no_short = 0;
+      int first_is_short = buffer[1] - buffer[0] < SHORT_TIME_LIMIT;
+
+      for (int i = 0; i < 6; i++) {
+        if(i<5){
+          no_short += buffer[i+1] - buffer[i] < SHORT_TIME_LIMIT;
+        }
+        valid_number = is_valid(i, first_is_short);
+      }
+
+      
+      
+      if(!valid_number){
+         Serial.println("Invalid Number");
+      }
+      else if (first_is_short) {
+        Serial.println(no_short);
+      } 
+      else {
+        if (no_short > 0) {
+          Serial.println(10-no_short);
+        } else{
+          Serial.println(0);
+        }
+
+      }
+
+      // Reset
+      buffer_offset = 0;
+    }
+    timestamp = millis();
+  }
+
+  last_state = state;
 }
